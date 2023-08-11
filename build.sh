@@ -2,13 +2,6 @@
 
 set -xe
 
-yasm -f elf64 -g dwarf2 numconv.asm
-
-for f in ./include/*.asm
-do
-    yasm -f elf64 -g dwarf2 $f
-done
-
-ld -o numconv *.o
-
-rm *.o
+gcc -g -c numconv.s
+ld -o numconv numconv.o
+rm numconv.o
