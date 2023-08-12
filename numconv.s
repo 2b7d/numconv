@@ -15,18 +15,28 @@
     .bss
 value:
     .quad 0
+buf:
+    .skip 65
 
     .data
 usage:
     .ascii "Usage: numconv [VALUE|OPTION]\n"
-    .ascii "Prints VALUE as signed, unsigned, hex, binary, octal\n"
+    .ascii "Prints VALUE as hex, binary, octal\n"
     .ascii "VALUE:\n"
     .ascii "    signed 64 bit integer\n"
     .ascii "OPTION:\n"
     .ascii "    --help show help\n"
     .asciz "\n"
+hex_output:
+    .asciz "Hex:    "
+binary_output:
+    .asciz "Binary: "
+octal_output:
+    .asciz "Octal:  "
 help_str:
     .asciz "--help"
+newline:
+    .asciz "\n"
 argc_err_msg:
     .asciz "Error: Not enough arguments\n"
 value_err_msg:
@@ -58,44 +68,101 @@ _start:
     cmpq $0, %rax
     jl value_err
 
+    movq value, %rdi
+    movq $16, %rsi
+    movq $buf, %rdx
+    call format_int
+
+    movq $hex_output, %rdi
+    movq $buf, %rsi
+    call print_value
+
+    movq value, %rdi
+    movq $2, %rsi
+    movq $buf, %rdx
+    call format_int
+
+    movq $binary_output, %rdi
+    movq $buf, %rsi
+    call print_value
+
+    movq value, %rdi
+    movq $8, %rsi
+    movq $buf, %rdx
+    call format_int
+
+    movq $octal_output, %rdi
+    movq $buf, %rsi
+    call print_value
+
     jmp exit_success
 
 argc_err:
-    movq $STDERR, %rdi
-    call print_usage
-    movq $STDERR, %rdi
-    movq $argc_err_msg, %rsi
-    call write
+    movq $argc_err_msg, %rdi
+    call print_error
     jmp exit_fail
 
 value_err:
-    movq $STDERR, %rdi
-    call print_usage
-    movq $STDERR, %rdi
-    movq $value_err_msg, %rsi
-    call write
+    movq $value_err_msg, %rdi
+    call print_error
     jmp exit_fail
 
 exit_fail:
     movq $1, %rdi
     jmp exit
-
 exit_success:
     movq $0, %rdi
-
 exit:
     movq $SYS_exit, %rax
     syscall
 
-# no need to preserve: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+# void format_int(rdi value, rsi base, rdx byte *buf)
+format_int:
+    movq %rdx, %r8
+    movq %rdi, %rax
+    movq $0, %rcx
+1:
+    movq $0, %rdx
+    divq %rsi
+
+    push %rdx
+    incq %rcx
+
+    cmpq $0, %rax
+    jne 1b
+
+    mov %r8, %rdx
+    mov $0, %r8
+1:
+    pop %rax
+
+    cmpq $16, %rsi
+    jne 2f
+
+    cmpb $10, %al
+    jl 2f
+
+    addb $'a'-10, %al
+    jmp 3f
+2:
+    addb $'0', %al
+3:
+    movb %al, (%rdx, %r8)
+    incq %r8
+
+    cmpq %rcx, %r8
+    jl 1b
+
+    movb $NULL, (%rdx, %r8)
+    ret
 
 # rax atoi(rdi byte *buf, rsi quad *value)
 atoi:
-    movq $FALSE, %r8 # is negative
+    movq $1, %r8 # sign
     cmpb $'-', (%rdi)
     jne 1f
 
-    movq $TRUE, %r8
+    movq $-1, %r8
     addq $1, %rdi
 1:
     call strlen
@@ -119,18 +186,14 @@ atoi:
 
     subb $'0', %al
     movsbq %al, %rax
-    imul $10, %rdx
+    imulq %r8, %rax
+    imulq $10, %rdx
     addq %rax, %rdx
     jo 3f
 
     incq %rcx
     jmp 1b
 2:
-    cmpq $TRUE, %r8
-    jne 1f
-
-    neg %rdx
-1:
     mov %rdx, (%rsi)
     movq $0, %rax
     ret
@@ -164,6 +227,37 @@ strlen:
 2:
     cmpb $NULL, (%rdi, %rax)
     jne 1b
+    ret
+
+# void print_value(rdi byte *prefix, rsi byte *buf)
+print_value:
+    push %rsi
+    push %rdi
+
+    movq $STDOUT, %rdi
+    pop %rsi
+    call write
+
+    movq $STDOUT, %rdi
+    pop %rsi
+    call write
+
+    movq $STDOUT, %rdi
+    movq $newline, %rsi
+    call write
+    ret
+
+# void print_error(rdi byte *err)
+print_error:
+    push %rdi
+
+    movq $STDERR, %rdi
+    call print_usage
+
+    movq $STDERR, %rdi
+    pop %rsi
+    call write
+
     ret
 
 # void print_usage(rdi fd)
