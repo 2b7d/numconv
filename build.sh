@@ -2,6 +2,6 @@
 
 set -xe
 
-gcc -g -c numconv.s
+gcc -ggdb -c numconv.s
 ld -o numconv numconv.o
 rm numconv.o
